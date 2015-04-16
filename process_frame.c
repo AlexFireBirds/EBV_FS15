@@ -16,6 +16,8 @@
 #define slowImplementation
 #define Border 6
 #define Paramk 5
+#define BOXSIZE 5
+#define SENSITIVITY 15
 
 const int nc = OSC_CAM_MAX_IMAGE_WIDTH / 2;
 const int nr = OSC_CAM_MAX_IMAGE_HEIGHT / 2;
@@ -24,11 +26,12 @@ int TextColor;
 int avgDxy[3][IMG_SIZE];
 int helpBuf[IMG_SIZE];
 
-// Declare Funcions
+// Declare functions
 void CalcDeriv();
 void AvgDeriv(int Index);
 void EdgeStrength();
 void locMax();
+void drawBoxes();
 
 void ResetProcess() {
 	//called when "reset" button is pressed
@@ -61,7 +64,8 @@ void ProcessFrame() {
 		EdgeStrength();
 		OscLog(INFO, "locMax() \n");
 		locMax();
-
+		OscLog(INFO, "drawBoxes() \n");
+		//drawBoxes();
 
 		t2 = OscSupCycGet();
 
@@ -172,7 +176,7 @@ void EdgeStrength()
 		  avgDxy[0][r+c] = (dIx2*dIy2 - (dIxy*dIxy)) - ((Paramk *((dIx2+dIy2)*(dIx2+dIy2)))>>7);
 
 		  data.u8TempImage[THRESHOLD][r+c] = MAX(0,MIN(255,(avgDxy[0][r+c] >> 10)));
-		  //data.u8TempImage[THRESHOLD][r+c] = MAX(0, MIN(255,(avgDxy[1][r+c]>>10)));
+
 		}
 	}
 }
@@ -181,11 +185,13 @@ void locMax()
 {
 	int c, r;
 	int tempMax = 0;
+	int globMax = 0;
 
 	for (r = nc; r < nr * nc - nc; r += nc) {/* we skip first and last lines (empty) */
 		for (c = Border + 1; c < nc - (Border + 1); c++) {/* +1 because we have one empty border column */
 			/* do pointer arithmetics with respect to center pixel location */
 			int* p = &avgDxy[0][r + c];
+			globMax = MAX(globMax, *p);
 			tempMax = 0;
 			for(int i =6; i>=0 ; i--)
 			{
@@ -220,14 +226,37 @@ void locMax()
 				{
 					tempMax = *(p+i*nc);
 				}
-				avgDxy[0][r + c] = tempMax;
+				//avgDxy[0][r + c] = tempMax;
 				//*(p-i*nc) = tempMax;
 				//*(p+i*nc) = tempMax;
+
+				// Draw box
 			}
 
-			//now averaged
-			data.u8TempImage[BACKGROUND][r+c] = MAX(0,MIN(255,(avgDxy[0][r+c] >> 10)));
+			if (avgDxy[0][r + c] == tempMax && tempMax  > (globMax * data.ipc.state.nThreshold) >> 7)
+			{
+				DrawBoundingBox(c - BOXSIZE, (r / nc) - BOXSIZE, c + BOXSIZE,(r / nc) + BOXSIZE,false, GREEN);
+				//printf("position: %i \t%i\n", r / (nc), c);
+			}
+
+
+
+			data.u8TempImage[THRESHOLD][r+c] = MAX(0,MIN(255,(avgDxy[0][r+c] >> 10))); // Für ohne Boxen
 		}
 	}
-	  //data.u8TempImage[BACKGROUND][r+c] = MAX(0,MIN(255,(avgDxy[0][r+c] >> 11)));
+}
+
+void drawBoxes()
+{
+	int r, c = 0;
+	int sizeBox = 5;
+	for (r = nc * (Border + 1); r < (nr * nc - nc * (Border + 1)); r += nc) {
+		for (c = Border + 1; c < (nc - (Border + 1)); c++) {
+			if ((avgDxy[0][r + c] >> 7) > (255 / 100 * data.ipc.state.nThreshold))
+			{
+				DrawBoundingBox(c - sizeBox, (r / nc) - sizeBox, c + sizeBox, (r / nc) + sizeBox, false, GREEN);
+			}
+		}
+	}
+
 }
